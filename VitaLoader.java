@@ -11,8 +11,6 @@
  * and add the path to Ghidra's "Edit" -> "Plugin Path..." configuration.
  */
 
-package GhidraVitaLoader;
-
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
