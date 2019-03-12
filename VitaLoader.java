@@ -59,7 +59,7 @@ import ghidra.util.exception.InvalidInputException;
 
 public class VitaLoader extends GhidraScript {
 	private final short ET_SCE_RELEXEC = (short)0xFE04;
-	
+
 	public class SceModuleInfo implements StructConverter {
 		public short attributes;
 		public short version;
@@ -81,7 +81,7 @@ public class VitaLoader extends GhidraScript {
 		public long extab_top;
 		public long extab_end;
 		public static final int SIZE = 0x5c;
-		
+
 		SceModuleInfo(BinaryReader reader) throws IOException {
 			attributes = reader.readNextShort();
 			version = reader.readNextShort();
@@ -108,29 +108,29 @@ public class VitaLoader extends GhidraScript {
 			return StructConverterUtil.toDataType(this);
 		}
 	}
-	
+
 	public class SceModuleExports implements StructConverter {
 		public short size;
 		public short version;
-		public short flags;
-		public short num_syms_funcs;
-		public short num_syms_vars;
-		public short num_syms_unk;
-		public int unk_1;
+		public short attribute;
+		public short num_functions;
+		public short num_vars;
+		public short num_tls_vars;
+		public int unknown1;
 		public long library_nid;
 		public long library_name;
 		public long nid_table;
 		public long entry_table;
 		public static final int SIZE = 0x20;
-		
+
 		SceModuleExports(BinaryReader reader) throws IOException {
 			size = reader.readNextShort();
 			version = reader.readNextShort();
-			flags = reader.readNextShort();
-			num_syms_funcs = reader.readNextShort();
-			num_syms_vars = reader.readNextShort();
-			num_syms_unk = reader.readNextShort();
-			unk_1 = reader.readNextInt();
+			attribute = reader.readNextShort();
+			num_functions = reader.readNextShort();
+			num_vars = reader.readNextShort();
+			num_tls_vars = reader.readNextShort();
+			unknown1 = reader.readNextInt();
 			library_nid = reader.readNextUnsignedInt();
 			library_name = reader.readNextUnsignedInt();
 			nid_table = reader.readNextUnsignedInt();
@@ -141,14 +141,14 @@ public class VitaLoader extends GhidraScript {
 			return StructConverterUtil.toDataType(this);
 		}
 	}
-	
-	public class SceModuleImports implements StructConverter {
+
+	public class SceModuleImports_1x implements StructConverter {
 		public short size;
 		public short version;
-		public short flags;
-		public short num_syms_funcs;
-		public short num_syms_vars;
-		public short num_syms_unk;
+		public short attribute;
+		public short num_functions;
+		public short num_vars;
+		public short num_syms_tls_vars;
 		public int reserved1;
 		public long library_nid;
 		public long library_name;
@@ -157,17 +157,17 @@ public class VitaLoader extends GhidraScript {
 		public long func_entry_table;
 		public long var_nid_table;
 		public long var_entry_table;
-		public long unk_nid_table;
-		public long unk_entry_table;
+		public long tls_nid_table;
+		public long tls_entry_table;
 		public static final int SIZE = 0x34;
-		
-		SceModuleImports(BinaryReader reader) throws IOException {
+
+		SceModuleImports_1x(BinaryReader reader) throws IOException {
 			size = reader.readNextShort();
 			version = reader.readNextShort();
-			flags = reader.readNextShort();
-			num_syms_funcs = reader.readNextShort();
-			num_syms_vars = reader.readNextShort();
-			num_syms_unk = reader.readNextShort();
+			attribute = reader.readNextShort();
+			num_functions = reader.readNextShort();
+			num_vars = reader.readNextShort();
+			num_syms_tls_vars = reader.readNextShort();
 			reserved1 = reader.readNextInt();
 			library_nid = reader.readNextUnsignedInt();
 			library_name = reader.readNextUnsignedInt();
@@ -176,60 +176,95 @@ public class VitaLoader extends GhidraScript {
 			func_entry_table = reader.readNextUnsignedInt();
 			var_nid_table = reader.readNextUnsignedInt();
 			var_entry_table = reader.readNextUnsignedInt();
-			unk_nid_table = reader.readNextUnsignedInt();
-			unk_entry_table = reader.readNextUnsignedInt();
+			tls_nid_table = reader.readNextUnsignedInt();
+			tls_entry_table = reader.readNextUnsignedInt();
 		}
 
 		public DataType toDataType() throws DuplicateNameException, IOException {
 			return StructConverterUtil.toDataType(this);
 		}
 	}
-	
+
+	public class SceModuleImports_3x implements StructConverter {
+		public short size;
+		public short version;
+		public short attribute;
+		public short num_functions;
+		public short num_vars;
+		public short unknown1;
+		public long library_nid;
+		public long library_name;
+		public long func_nid_table;
+		public long func_entry_table;
+		public long var_nid_table;
+		public long var_entry_table;
+		public static final int SIZE = 0x24;
+
+		SceModuleImports_3x(BinaryReader reader) throws IOException {
+			size = reader.readNextShort();
+			version = reader.readNextShort();
+			attribute = reader.readNextShort();
+			num_functions = reader.readNextShort();
+			num_vars = reader.readNextShort();
+			unknown1 = reader.readNextShort();
+			library_nid = reader.readNextUnsignedInt();
+			library_name = reader.readNextUnsignedInt();
+			func_nid_table = reader.readNextUnsignedInt();
+			func_entry_table = reader.readNextUnsignedInt();
+			var_nid_table = reader.readNextUnsignedInt();
+			var_entry_table = reader.readNextUnsignedInt();
+		}
+
+		public DataType toDataType() throws DuplicateNameException, IOException {
+			return StructConverterUtil.toDataType(this);
+		}
+	}
+
 	public static class NidDb {
 		public static class NidDbLibrary {
 			public HashMap<Long, String> functions;
-	
+
 			public NidDbLibrary() {
 				functions = new HashMap<Long, String>();
 			}
-			
+
 			public boolean functionExists(long functionNid) {
 				return functions.containsKey(functionNid);
 			}
-			
+
 			public void insertFunction(long functionNid, String name) {
 				functions.put(functionNid, name);
 			}
-			
+
 			public String getFunctionName(long functionNid) {
 				return functions.get(functionNid);
 			}
 		}
 
 		public HashMap<Long, NidDbLibrary> libraries;
-		
+
 		public NidDb() {
 			libraries = new HashMap<Long, NidDbLibrary>();
 		}
-		
+
 		public boolean libraryExists(long nid) {
 			return libraries.containsKey(nid);
 		}
-		
+
 		public void insertLibrary(long libraryNid, NidDbLibrary library) {
 			libraries.put(libraryNid, library);
 		}
-		
+
 		public NidDbLibrary getLibrary(long libraryNid) {
 			return libraries.get(libraryNid);
 		}
-		
+
 		public String getFunctionName(long libraryNid, long functionNid) {
 			NidDbLibrary library = getLibrary(libraryNid);
 			if (library == null)
 				return null;
 			return library.getFunctionName(functionNid);
-		}	
+		}
 	}
 
 	public static class NidDbLibraryRaw {
@@ -242,20 +277,20 @@ public class VitaLoader extends GhidraScript {
 		public Long nid;
 		public Map<String, NidDbLibraryRaw> libraries;
 	}
-	
+
 	public static class NidDbRaw {
 		public int version;
 		public String firmware;
 		public Map<String, NidDbModuleRaw> modules;
 	}
-	
+
 	public void populateNidDbFromRaw(NidDb db, NidDbRaw raw) {
 		for (Map.Entry<String, NidDbModuleRaw> moduleIt: raw.modules.entrySet()) {
 			NidDbModuleRaw moduleRaw = moduleIt.getValue();
 			for (Map.Entry<String, NidDbLibraryRaw> libraryIt: moduleRaw.libraries.entrySet()) {
 				NidDbLibraryRaw libraryRaw = libraryIt.getValue();
 				NidDb.NidDbLibrary library = new NidDb.NidDbLibrary();
-				
+
 				for (Map.Entry<String, Long> functionIt: libraryRaw.functions.entrySet())
 					library.insertFunction(functionIt.getValue(), functionIt.getKey());
 
@@ -263,16 +298,16 @@ public class VitaLoader extends GhidraScript {
 			}
 		}
 	}
-			
+
 	private ElfHeader getElfHeader(Memory memory) throws MemoryAccessException, ElfException {
 		MemoryBlock elfHeaderMemoryBlock = memory.getBlock("_elfHeader");
-		
+
 		int elfHeaderSize = (int)elfHeaderMemoryBlock.getSize();
 		Address elfHeaderStart = elfHeaderMemoryBlock.getStart();
 		byte[] elfHeaderBytes = new byte[elfHeaderSize];
-		
+
 		elfHeaderMemoryBlock.getBytes(elfHeaderStart, elfHeaderBytes);
-		
+
 		ByteArrayProvider elfHeaderProvider = new ByteArrayProvider(elfHeaderBytes);
 		return ElfHeader.createElfHeader(RethrowContinuesFactory.INSTANCE, elfHeaderProvider);
 	}
@@ -284,7 +319,7 @@ public class VitaLoader extends GhidraScript {
 		}
 		return null;
 	}
-	
+
 	private static void functionApplyFunctionSignature(Program program, Function function, FunctionDefinition functionDef) throws InvalidInputException, DuplicateNameException {
 		/* Build function parameters */
 		List<ParameterImpl> paramImpls = new ArrayList<ParameterImpl>();
@@ -292,15 +327,15 @@ public class VitaLoader extends GhidraScript {
 			ParameterImpl pimpl = new ParameterImpl(def.getName(), def.getDataType().clone(program.getDataTypeManager()), program);
 			paramImpls.add(new ParameterImpl(pimpl, program));
 		}
-		
+
 		/* Build return type */
 		ReturnParameterImpl returnParam = new ReturnParameterImpl(functionDef.getReturnType(), program);
 
 		/* Apply function signature */
 		function.updateFunction(null, returnParam, paramImpls,
-				FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS, false, SourceType.DEFAULT);	
+				FunctionUpdateType.DYNAMIC_STORAGE_FORMAL_PARAMS, false, SourceType.DEFAULT);
 	}
-	
+
 	private static void applySceModuleInfoStruct(GhidraScript script, Address moduleInfoAddress, String moduleName) throws Exception {
 		StructureDataType sceModuleInfoDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceModuleInfo", 0);
 		sceModuleInfoDataType.add(StructConverter.WORD, "attributes", null);
@@ -322,21 +357,21 @@ public class VitaLoader extends GhidraScript {
 		sceModuleInfoDataType.add(StructConverter.IBO32, "exidx_end", null);
 		sceModuleInfoDataType.add(StructConverter.IBO32, "extab_top", null);
 		sceModuleInfoDataType.add(StructConverter.IBO32, "extab_end", null);
-		
+
 		script.clearListing(moduleInfoAddress, moduleInfoAddress.add(sceModuleInfoDataType.getLength()));
 		script.createData(moduleInfoAddress, sceModuleInfoDataType);
 		script.createLabel(moduleInfoAddress, moduleName + "_" + sceModuleInfoDataType.getName(), true);
 	}
-	
+
 	private static void applySceModuleExportsStruct(GhidraScript script,  String moduleName, Address moduleExportsAddress, String exportsName) throws Exception {
 		StructureDataType sceModuleExportsDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceModuleExports", 0);
 		sceModuleExportsDataType.add(StructConverter.WORD, "size", null);
 		sceModuleExportsDataType.add(StructConverter.WORD, "version", null);
-		sceModuleExportsDataType.add(StructConverter.WORD, "flags", null);
-		sceModuleExportsDataType.add(StructConverter.WORD, "num_syms_funcs", null);
-		sceModuleExportsDataType.add(StructConverter.WORD, "num_syms_vars", null);
-		sceModuleExportsDataType.add(StructConverter.WORD, "unk_1", null);
-		sceModuleExportsDataType.add(StructConverter.DWORD, "unk_2", null);
+		sceModuleExportsDataType.add(StructConverter.WORD, "attribute", null);
+		sceModuleExportsDataType.add(StructConverter.WORD, "num_functions", null);
+		sceModuleExportsDataType.add(StructConverter.WORD, "num_vars", null);
+		sceModuleExportsDataType.add(StructConverter.WORD, "num_tls_vars", null);
+		sceModuleExportsDataType.add(StructConverter.DWORD, "unknown1", null);
 		sceModuleExportsDataType.add(StructConverter.DWORD, "library_nid", null);
 		sceModuleExportsDataType.add(Pointer32DataType.dataType, "library_name", null);
 		sceModuleExportsDataType.add(Pointer32DataType.dataType, "nid_table", null);
@@ -346,31 +381,51 @@ public class VitaLoader extends GhidraScript {
 		script.createData(moduleExportsAddress, sceModuleExportsDataType);
 		script.createLabel(moduleExportsAddress, moduleName + "_exports_" + exportsName + "_" + sceModuleExportsDataType.getName(), true);
 	}
-	
-	private static void applySceModuleImportsStruct(GhidraScript script,  String moduleName, Address moduleImportsAddress, String ImportsName) throws Exception {
-		StructureDataType sceModuleImportsDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceModuleImports", 0);
+
+	private static void applySceModuleImportsStruct_1x(GhidraScript script,  String moduleName, Address moduleImportsAddress, String ImportsName) throws Exception {
+		StructureDataType sceModuleImportsDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceModuleImports_1x", 0);
 		sceModuleImportsDataType.add(StructConverter.WORD, "size", null);
 		sceModuleImportsDataType.add(StructConverter.WORD, "version", null);
-		sceModuleImportsDataType.add(StructConverter.WORD, "flags", null);
-		sceModuleImportsDataType.add(StructConverter.WORD, "num_syms_funcs", null);
-		sceModuleImportsDataType.add(StructConverter.WORD, "num_syms_vars", null);
-		sceModuleImportsDataType.add(StructConverter.WORD, "num_syms_unk", null);
-		sceModuleImportsDataType.add(StructConverter.DWORD, "reserved_1", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "attribute", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "num_functions", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "num_vars", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "num_tls_vars", null);
+		sceModuleImportsDataType.add(StructConverter.DWORD, "reserved1", null);
 		sceModuleImportsDataType.add(StructConverter.DWORD, "library_nid", null);
 		sceModuleImportsDataType.add(Pointer32DataType.dataType, "library_name", null);
-		sceModuleImportsDataType.add(StructConverter.DWORD, "reserved_2", null);
+		sceModuleImportsDataType.add(StructConverter.DWORD, "reserved2", null);
 		sceModuleImportsDataType.add(Pointer32DataType.dataType, "func_nid_table", null);
 		sceModuleImportsDataType.add(Pointer32DataType.dataType, "func_entry_table", null);
 		sceModuleImportsDataType.add(Pointer32DataType.dataType, "var_nid_table", null);
 		sceModuleImportsDataType.add(Pointer32DataType.dataType, "var_entry_table", null);
-		sceModuleImportsDataType.add(Pointer32DataType.dataType, "unk_nid_table", null);
-		sceModuleImportsDataType.add(Pointer32DataType.dataType, "unk_entry_table", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "tls_nid_table", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "tls_entry_table", null);
 
 		script.clearListing(moduleImportsAddress, moduleImportsAddress.add(sceModuleImportsDataType.getLength()));
 		script.createData(moduleImportsAddress, sceModuleImportsDataType);
 		script.createLabel(moduleImportsAddress, moduleName + "_imports_" + ImportsName + "_" + sceModuleImportsDataType.getName(), true);
 	}
-	
+
+	private static void applySceModuleImportsStruct_3x(GhidraScript script,  String moduleName, Address moduleImportsAddress, String ImportsName) throws Exception {
+		StructureDataType sceModuleImportsDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceModuleImports_3x", 0);
+		sceModuleImportsDataType.add(StructConverter.WORD, "size", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "version", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "attribute", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "num_functions", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "num_vars", null);
+		sceModuleImportsDataType.add(StructConverter.WORD, "unknown1", null);
+		sceModuleImportsDataType.add(StructConverter.DWORD, "library_nid", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "library_name", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "func_nid_table", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "func_entry_table", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "var_nid_table", null);
+		sceModuleImportsDataType.add(Pointer32DataType.dataType, "var_entry_table", null);
+
+		script.clearListing(moduleImportsAddress, moduleImportsAddress.add(sceModuleImportsDataType.getLength()));
+		script.createData(moduleImportsAddress, sceModuleImportsDataType);
+		script.createLabel(moduleImportsAddress, moduleName + "_imports_" + ImportsName + "_" + sceModuleImportsDataType.getName(), true);
+	}
+
 	private static void processFunction(GhidraScript script, Program program, NidDb db, String libraryName, long libraryNid, long functionNid, long functionEntry, MemoryBlock block) throws DuplicateNameException, InvalidInputException {
 		String functionName = db.getFunctionName(libraryNid, functionNid);
 		if (functionName == null)
@@ -378,14 +433,14 @@ public class VitaLoader extends GhidraScript {
 
 		//script.println("  " + String.format("0x%08X", functionNid) + ", " + functionName +
 		//		", addr: " + String.format("0x%08X", functionEntry));
-		
+
 		Address functionEntryAddress = block.getStart().getNewAddress(functionEntry);
 		Function function = script.getFunctionAt(functionEntryAddress);
 		if (function == null)
 			function = script.createFunction(functionEntryAddress, functionName);
 		else
 			function.setName(functionName, SourceType.IMPORTED);
-		
+
 		/* Set function signature */
 		List<DataType> dataTypeList = new ArrayList<DataType>();
 		program.getDataTypeManager().findDataTypes(functionName, dataTypeList);
@@ -394,152 +449,185 @@ public class VitaLoader extends GhidraScript {
 				continue;
 			FunctionDefinition fdef = (FunctionDefinition)dt;
 			functionApplyFunctionSignature(program, function, fdef);
-		}	
+		}
 	}
-	
+
 	private void processExports(Program program, NidDb db, Memory memory, MemoryBlock block, String moduleName, Address exportsAddress, SceModuleExports exports) throws Exception {
 		//println("Exports NID: " + String.format("0x%08X", exports.library_nid));
-		//println("Exports num funcs: " + String.format("0x%08X", exports.num_syms_funcs));
+		//println("Exports num funcs: " + String.format("0x%08X", exports.num_functions));
 		//println("Exports nid table: " + String.format("0x%08X", exports.nid_table));
 		//println("Exports size: " + String.format("0x%08X", exports.size));
-		
+
 		Address funcNidTableAddress = block.getStart().getNewAddress(exports.nid_table);
 		Address funcEntryTableAddress = block.getStart().getNewAddress(exports.entry_table);
 		Address libraryNameAddress = block.getStart().getNewAddress(exports.library_name);
-		
+
 		ByteProvider libraryNameByteProvider = new MemoryByteProvider(memory, libraryNameAddress);
 		BinaryReader libraryNameBinaryReader = new BinaryReader(libraryNameByteProvider, true);
 		String libraryName = libraryNameBinaryReader.readNextAsciiString();
-		
-		byte[] funcNidTableBytes = new byte[4 * exports.num_syms_funcs];
-		byte[] funcEntryTableBytes = new byte[4 * exports.num_syms_funcs];
-		
+
+		byte[] funcNidTableBytes = new byte[4 * exports.num_functions];
+		byte[] funcEntryTableBytes = new byte[4 * exports.num_functions];
+
 		block.getBytes(funcNidTableAddress, funcNidTableBytes, 0, funcNidTableBytes.length);
 		block.getBytes(funcEntryTableAddress, funcEntryTableBytes, 0, funcEntryTableBytes.length);
 		IntBuffer funcNidTableIntBuffer = ByteBuffer.wrap(funcNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 		IntBuffer funcEntryTableIntBuffer = ByteBuffer.wrap(funcEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
-		
+
 		//println("Exports library name: " + libraryName);
-		
-		for (int i = 0; i < exports.num_syms_funcs; i++) {
+
+		for (int i = 0; i < exports.num_functions; i++) {
 			long functionNid =  Integer.toUnsignedLong(funcNidTableIntBuffer.get(i));
 			long functionEntry =  Integer.toUnsignedLong(funcEntryTableIntBuffer.get(i))  & ~1l;
-			
+
 			processFunction(this, program, db, libraryName, exports.library_nid, functionNid, functionEntry, block);
 		}
-		
+
 		applySceModuleExportsStruct(this, moduleName, exportsAddress, libraryName);
-		
-		if (exports.num_syms_funcs > 0) {
-			createDwords(funcNidTableAddress, exports.num_syms_funcs);
+
+		if (exports.num_functions > 0) {
+			createDwords(funcNidTableAddress, exports.num_functions);
 			createLabel(funcNidTableAddress, moduleName + "_exports_" + libraryName + "_NID_table", true);
 			createLabel(funcEntryTableAddress, moduleName + "_exports_" + libraryName + "_entry_table", true);
 		}
 	}
-	
-	private void processImports(Program program, NidDb db, Memory memory, MemoryBlock block, String moduleName, Address importsAddress, SceModuleImports imports) throws Exception {
+
+	private void processImports(Program program, NidDb db, Memory memory, MemoryBlock block, String moduleName, Address importsAddress,
+								long libraryNid, long funcNidTable, long funcEntryTable, long libraryNameLong, short numFunctions, boolean is1xFormat) throws Exception {
 		//println("Imports NID: " + String.format("0x%08X", imports.library_nid));
-		//println("Imports num funcs: " + String.format("0x%08X", imports.num_syms_funcs));
+		//println("Imports num funcs: " + String.format("0x%08X", imports.num_functions));
 		//println("Imports nid table: " + String.format("0x%08X", imports.func_nid_table));
 		//println("Imports size: " + String.format("0x%08X", imports.size));
-		
-		Address funcNidTableAddress = block.getStart().getNewAddress(imports.func_nid_table);
-		Address funcEntryTableAddress = block.getStart().getNewAddress(imports.func_entry_table);
-		Address libraryNameAddress = block.getStart().getNewAddress(imports.library_name);
-		
+
+		Address funcNidTableAddress = block.getStart().getNewAddress(funcNidTable);
+		Address funcEntryTableAddress = block.getStart().getNewAddress(funcEntryTable);
+		Address libraryNameAddress = block.getStart().getNewAddress(libraryNameLong);
+
 		ByteProvider libraryNameByteProvider = new MemoryByteProvider(memory, libraryNameAddress);
 		BinaryReader libraryNameBinaryReader = new BinaryReader(libraryNameByteProvider, true);
 		String libraryName = libraryNameBinaryReader.readNextAsciiString();
-		
-		byte[] funcNidTableBytes = new byte[4 * imports.num_syms_funcs];
-		byte[] funcEntryTableBytes = new byte[4 * imports.num_syms_funcs];
-		
+
+		byte[] funcNidTableBytes = new byte[4 * numFunctions];
+		byte[] funcEntryTableBytes = new byte[4 * numFunctions];
+
 		block.getBytes(funcNidTableAddress, funcNidTableBytes, 0, funcNidTableBytes.length);
 		block.getBytes(funcEntryTableAddress, funcEntryTableBytes, 0, funcEntryTableBytes.length);
 		IntBuffer funcNidTableIntBuffer = ByteBuffer.wrap(funcNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 		IntBuffer funcEntryTableIntBuffer = ByteBuffer.wrap(funcEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
-		
+
 		//println("Imports library name: " + libraryName);
-		
-		for (int i = 0; i < imports.num_syms_funcs; i++) {
+
+		for (int i = 0; i < numFunctions; i++) {
 			long functionNid =  Integer.toUnsignedLong(funcNidTableIntBuffer.get(i));
 			long functionEntry =  Integer.toUnsignedLong(funcEntryTableIntBuffer.get(i)) & ~1l;
-			
-			processFunction(this, program, db, libraryName, imports.library_nid, functionNid, functionEntry, block);
+
+			processFunction(this, program, db, libraryName, libraryNid, functionNid, functionEntry, block);
 		}
-		
-		applySceModuleImportsStruct(this, moduleName, importsAddress, libraryName);
-		
-		if (imports.num_syms_funcs > 0) {
-			createDwords(funcNidTableAddress, imports.num_syms_funcs);
+
+		if (is1xFormat)
+			applySceModuleImportsStruct_1x(this, moduleName, importsAddress, libraryName);
+		else
+			applySceModuleImportsStruct_3x(this, moduleName, importsAddress, libraryName);
+
+		if (numFunctions > 0) {
+			createDwords(funcNidTableAddress, numFunctions);
 			createLabel(funcNidTableAddress, moduleName + "_imports_" + libraryName + "_NID_table", true);
 			createLabel(funcEntryTableAddress, moduleName + "_imports_" + libraryName + "_entry_table", true);
 		}
 	}
-	
+
 	private void processModuleInfo(Program program, NidDb db, Memory memory, MemoryBlock block, Address moduleInfoAddress) throws Exception {
 		/* Get module info bytes */
 		byte[] moduleInfoBytes = new byte[SceModuleInfo.SIZE];
 		block.getBytes(moduleInfoAddress, moduleInfoBytes, 0, moduleInfoBytes.length);
-		
+
 		/* Read module info information */
 		ByteProvider provider = new ByteArrayProvider(moduleInfoBytes);
 		BinaryReader reader = new BinaryReader(provider, true);
 		SceModuleInfo moduleInfo = new SceModuleInfo(reader);
-		
+
 		println("Vita module name: " + moduleInfo.name);
-		
+
 		applySceModuleInfoStruct(this, moduleInfoAddress, moduleInfo.name);
-		
+
 		Address exportsTop = block.getStart().add(moduleInfo.export_top);
 		Address exportsEnd = block.getStart().add(moduleInfo.export_end);
 		while (!exportsTop.equals(exportsEnd)) {
 			byte[] exportsBytes = new byte[SceModuleExports.SIZE];
 			block.getBytes(exportsTop, exportsBytes, 0, exportsBytes.length);
-			
+
 			ByteProvider exportsByteProvider = new ByteArrayProvider(exportsBytes);
 			BinaryReader exportsBinaryReader = new BinaryReader(exportsByteProvider, true);
 			SceModuleExports moduleExports = new SceModuleExports(exportsBinaryReader);
 			if (moduleExports.size != SceModuleExports.SIZE) {
-				println("Exports size mismatch");
+				println("Exports size mismatch (got " + String.format("0x%X", moduleExports.size) + ")");
 				break;
 			}
-			
+
 			processExports(program, db, memory, block, moduleInfo.name, exportsTop, moduleExports);
-			
+
 			exportsTop = exportsTop.add(moduleExports.size);
 		}
-		
+
 		Address importsTop = block.getStart().add(moduleInfo.import_top);
 		Address importsEnd = block.getStart().add(moduleInfo.import_end);
 		while (!importsTop.equals(importsEnd)) {
-			byte[] importsBytes = new byte[SceModuleImports.SIZE];
-			block.getBytes(importsTop, importsBytes, 0, importsBytes.length);
-			
-			ByteProvider importsByteProvider = new ByteArrayProvider(importsBytes);
-			BinaryReader importsBinaryReader = new BinaryReader(importsByteProvider, true);
-			SceModuleImports moduleImports = new SceModuleImports(importsBinaryReader);
-			if (moduleImports.size != SceModuleImports.SIZE) {
-				println("Imports size mismatch");
+			byte[] importsSizeBytes = new byte[2];
+			block.getBytes(importsTop, importsSizeBytes, 0, importsSizeBytes.length);
+			ByteProvider importsSizeByteProvider = new ByteArrayProvider(importsSizeBytes);
+			BinaryReader importsSizeBinaryReader = new BinaryReader(importsSizeByteProvider, true);
+			int importsSize = importsSizeBinaryReader.readNextUnsignedShort();
+
+			byte[] importsBytes = null;
+			if (importsSize == SceModuleImports_1x.SIZE) {
+				importsBytes = new byte[SceModuleImports_1x.SIZE];
+			} else if (importsSize == SceModuleImports_3x.SIZE) {
+				importsBytes = new byte[SceModuleImports_3x.SIZE];
+			} else {
+				println("Imports size mismatch (got " + String.format("0x%X", importsSize) + ")");
 				break;
 			}
-			
-			processImports(program, db, memory, block, moduleInfo.name, importsTop, moduleImports);
-			
-			importsTop = importsTop.add(moduleImports.size);
+			block.getBytes(importsTop, importsBytes, 0, importsBytes.length);
+
+			ByteProvider importsByteProvider = new ByteArrayProvider(importsBytes);
+			BinaryReader importsBinaryReader = new BinaryReader(importsByteProvider, true);
+
+			long libraryNid, funcNidTable, funcEntryTable, libraryNameLong;
+			short numFunctions;
+
+			if (importsSize == SceModuleImports_1x.SIZE) {
+				SceModuleImports_1x moduleImports = new SceModuleImports_1x(importsBinaryReader);
+				libraryNid = moduleImports.library_nid;
+				funcNidTable = moduleImports.func_nid_table;
+				funcEntryTable = moduleImports.func_entry_table;
+				libraryNameLong = moduleImports.library_name;
+				numFunctions = moduleImports.num_functions;
+			} else { /* Can only be 3.x format */
+				SceModuleImports_3x moduleImports = new SceModuleImports_3x(importsBinaryReader);
+				libraryNid = moduleImports.library_nid;
+				funcNidTable = moduleImports.func_nid_table;
+				funcEntryTable = moduleImports.func_entry_table;
+				libraryNameLong = moduleImports.library_name;
+				numFunctions = moduleImports.num_functions;
+			}
+
+			processImports(program, db, memory, block, moduleInfo.name, importsTop, libraryNid, funcNidTable,
+					funcEntryTable, libraryNameLong, numFunctions, (importsSize == SceModuleImports_1x.SIZE));
+
+			importsTop = importsTop.add(importsSize);
 		}
 	}
-	
+
 	@Override
 	public void run() throws Exception {
 		println("VitaLoader by xerpi");
-		
+
 		if (!ElfLoader.ELF_NAME.equals(currentProgram.getExecutableFormat())) {
 			Msg.showError(this, null, "VitaLoader",
 					"Current program is not an ELF program!  (" + currentProgram.getExecutableFormat() + ")");
 			return;
 		}
-		
+
 		Memory memory = currentProgram.getMemory();
 		ElfHeader elfHeader = getElfHeader(memory);
 		if (elfHeader.e_type() != ET_SCE_RELEXEC) {
@@ -547,7 +635,7 @@ public class VitaLoader extends GhidraScript {
 					"Current program is not an PSVita ELF program!  (" + String.format("0x%04X", elfHeader.e_type()) + ")");
 			return;
 		}
-		
+
 		/* NID database choose dialog */
 		GhidraFileChooser fileChooser = new GhidraFileChooser(null);
 		String lastDir = Preferences.getProperty(Preferences.LAST_IMPORT_DIRECTORY);
@@ -556,7 +644,7 @@ public class VitaLoader extends GhidraScript {
 		fileChooser.setTitle("Choose NID database YML");
 		fileChooser.setApproveButtonText("Choose NID database file");
 		fileChooser.rescanCurrentDirectory();
-		
+
 		File selectedFile = fileChooser.getSelectedFile();
 		if (selectedFile == null) {
 			Msg.showError(this, null, "VitaLoader", "A NID database is needed!");
@@ -568,11 +656,11 @@ public class VitaLoader extends GhidraScript {
 		NidDbRaw dbRaw = yamlReader.read(NidDbRaw.class);
 		NidDb db = new NidDb();
 		populateNidDbFromRaw(db, dbRaw);
-		
+
 		/* Get module info address */
 		MemoryBlock textMemoryBlock = getExecutableMemoryBlock(memory);
 		Address moduleInfoAddress = textMemoryBlock.getStart().add(elfHeader.e_entry());
-		
+
 		processModuleInfo(getCurrentProgram(), db, memory, textMemoryBlock, moduleInfoAddress);
 	}
 }
