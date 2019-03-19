@@ -59,6 +59,7 @@ import ghidra.util.exception.InvalidInputException;
 
 public class VitaLoader extends GhidraScript {
 	private final short ET_SCE_RELEXEC = (short)0xFE04;
+	private final short ET_SCE_EXEC = (short)0xFE00;
 
 	public class SceModuleInfo implements StructConverter {
 		public short attributes;
@@ -630,7 +631,7 @@ public class VitaLoader extends GhidraScript {
 
 		Memory memory = currentProgram.getMemory();
 		ElfHeader elfHeader = getElfHeader(memory);
-		if (elfHeader.e_type() != ET_SCE_RELEXEC) {
+		if (elfHeader.e_type() != ET_SCE_RELEXEC && elfHeader.e_type() != ET_SCE_EXEC) {
 			Msg.showError(this, null, "VitaLoader",
 					"Current program is not an PSVita ELF program!  (" + String.format("0x%04X", elfHeader.e_type()) + ")");
 			return;
