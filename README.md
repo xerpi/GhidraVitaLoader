@@ -25,12 +25,5 @@ To take full advantage of this script, I recommend parsing the [vitasdk](https:/
     * If generating the kernel header, remove all the `inline` macros (`ksceKernelCpu*Context`, `ksceKernelCpuUnrestrictedMemcpy`)
 3. Change `SceKernelProcessInfo`'s `unk[0xE8 / 4 - 6]` to `unk[0x34]`
 
-### 1.b Generating a Ghidra-parsable kernel header
-
-1. `$ arm-vita-eabi-gcc -P -E $VITASDK/arm-vita-eabi/include/vitasdk.h -D"__attribute__(x)=" -D"__extension__(x)=" > vitasdkkern_header.h` (use `vitasdkkern.h` for the kernel headers)
-2. Now open `vitasdkkern_header.h` and remove the `typedef unsigned int wchar_t;` (line 3)
-3. Remove all the `inline` macros (`ksceKernelCpu*Context`, `ksceKernelCpuUnrestrictedMemcpy`)
-4. Change `SceKernelProcessInfo`'s `unk[0xE8 / 4 - 6]` to `unk[0x34]`
-
 ### 2. Parsing the header
 1. Open Ghidra and go to _File_ -> _Parse C Source..._ and select `vitasdk_header.h`
