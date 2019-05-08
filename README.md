@@ -23,7 +23,7 @@ To take full advantage of this script, I recommend parsing the [vitasdk](https:/
     * Use `vitasdkkern.h` for the kernel headers
 2. Now open `vitasdk_header.h` and remove the `typedef unsigned int wchar_t;` (line 3)
     * If generating the kernel header, remove all the `inline` macros (`ksceKernelCpu*Context`, `ksceKernelCpuUnrestrictedMemcpy`)
-3. Change `SceKernelProcessInfo`'s `unk[0xE8 / 4 - 6]` to `unk[0x34]`
+    * If generating the kernel header, change `SceKernelProcessInfo`'s `unk[0xE8 / 4 - 6]` to `unk[0x34]`
 
 ### 2. Parsing the header
 1. Open Ghidra and go to _File_ -> _Parse C Source..._ and select `vitasdk_header.h`
