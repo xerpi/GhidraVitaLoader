@@ -11,6 +11,10 @@
  * and add the path to Ghidra's "Edit" -> "Plugin Path..." configuration.
  */
 
+/* TODOs:
+ *   - Support variable imports/exports
+ */
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
@@ -221,11 +225,11 @@ public class VitaLoader extends GhidraScript {
 		}
 	}
 
-	public static class NidDb {
-		public static class NidDbLibrary {
+	public static class NidDatabase {
+		public static class NidDatabaseLibrary {
 			public HashMap<Long, String> functions;
 
-			public NidDbLibrary() {
+			public NidDatabaseLibrary() {
 				functions = new HashMap<Long, String>();
 			}
 
@@ -242,55 +246,56 @@ public class VitaLoader extends GhidraScript {
 			}
 		}
 
-		public HashMap<Long, NidDbLibrary> libraries;
+		public HashMap<Long, NidDatabaseLibrary> libraries;
 
-		public NidDb() {
-			libraries = new HashMap<Long, NidDbLibrary>();
+		public NidDatabase() {
+			libraries = new HashMap<Long, NidDatabaseLibrary>();
 		}
 
 		public boolean libraryExists(long nid) {
 			return libraries.containsKey(nid);
 		}
 
-		public void insertLibrary(long libraryNid, NidDbLibrary library) {
+		public void insertLibrary(long libraryNid, NidDatabaseLibrary library) {
 			libraries.put(libraryNid, library);
 		}
 
-		public NidDbLibrary getLibrary(long libraryNid) {
+		public NidDatabaseLibrary getLibrary(long libraryNid) {
 			return libraries.get(libraryNid);
 		}
 
 		public String getFunctionName(long libraryNid, long functionNid) {
-			NidDbLibrary library = getLibrary(libraryNid);
+			NidDatabaseLibrary library = getLibrary(libraryNid);
 			if (library == null)
 				return null;
 			return library.getFunctionName(functionNid);
 		}
 	}
 
-	public static class NidDbLibraryRaw {
+	public static class YamlNidDatabaseLibrary {
 		public Long nid;
 		public Boolean kernel;
 		public Map<String, Long> functions;
+		public Map<String, Long> variables;
 	}
 
-	public static class NidDbModuleRaw {
+	public static class YamlNidDatabaseModule {
 		public Long nid;
-		public Map<String, NidDbLibraryRaw> libraries;
+		public Map<String, YamlNidDatabaseLibrary> libraries;
 	}
 
-	public static class NidDbRaw {
+	public static class YamlNidDatabase {
 		public int version;
 		public String firmware;
-		public Map<String, NidDbModuleRaw> modules;
+		public Map<String, YamlNidDatabaseModule> modules;
 	}
 
-	public void populateNidDbFromRaw(NidDb db, NidDbRaw raw) {
-		for (Map.Entry<String, NidDbModuleRaw> moduleIt: raw.modules.entrySet()) {
-			NidDbModuleRaw moduleRaw = moduleIt.getValue();
-			for (Map.Entry<String, NidDbLibraryRaw> libraryIt: moduleRaw.libraries.entrySet()) {
-				NidDbLibraryRaw libraryRaw = libraryIt.getValue();
-				NidDb.NidDbLibrary library = new NidDb.NidDbLibrary();
+	public void populateNidDatabaseFromYaml(NidDatabase db, YamlNidDatabase raw) {
+		for (Map.Entry<String, YamlNidDatabaseModule> moduleIt: raw.modules.entrySet()) {
+			YamlNidDatabaseModule moduleRaw = moduleIt.getValue();
+			for (Map.Entry<String, YamlNidDatabaseLibrary> libraryIt: moduleRaw.libraries.entrySet()) {
+				YamlNidDatabaseLibrary libraryRaw = libraryIt.getValue();
+				NidDatabase.NidDatabaseLibrary library = new NidDatabase.NidDatabaseLibrary();
 
 				for (Map.Entry<String, Long> functionIt: libraryRaw.functions.entrySet())
 					library.insertFunction(functionIt.getValue(), functionIt.getKey());
@@ -427,7 +432,7 @@ public class VitaLoader extends GhidraScript {
 		script.createLabel(moduleImportsAddress, moduleName + "_imports_" + ImportsName + "_" + sceModuleImportsDataType.getName(), true);
 	}
 
-	private static void processFunction(GhidraScript script, Program program, NidDb db, String libraryName, long libraryNid, long functionNid, long functionEntry, MemoryBlock block) throws DuplicateNameException, InvalidInputException {
+	private static void processFunction(GhidraScript script, Program program, NidDatabase db, String libraryName, long libraryNid, long functionNid, long functionEntry, MemoryBlock block) throws DuplicateNameException, InvalidInputException {
 		String functionName = db.getFunctionName(libraryNid, functionNid);
 		if (functionName == null)
 			functionName = libraryName + "_" + String.format("%08X", functionNid);
@@ -453,7 +458,7 @@ public class VitaLoader extends GhidraScript {
 		}
 	}
 
-	private void processExports(Program program, NidDb db, Memory memory, MemoryBlock block, String moduleName, Address exportsAddress, SceModuleExports exports) throws Exception {
+	private void processExports(Program program, NidDatabase db, Memory memory, MemoryBlock block, String moduleName, Address exportsAddress, SceModuleExports exports) throws Exception {
 		//println("Exports NID: " + String.format("0x%08X", exports.library_nid));
 		//println("Exports num funcs: " + String.format("0x%08X", exports.num_functions));
 		//println("Exports nid table: " + String.format("0x%08X", exports.nid_table));
@@ -475,7 +480,7 @@ public class VitaLoader extends GhidraScript {
 		IntBuffer funcNidTableIntBuffer = ByteBuffer.wrap(funcNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 		IntBuffer funcEntryTableIntBuffer = ByteBuffer.wrap(funcEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 
-		//println("Exports library name: " + libraryName);
+		println("Exports library name: " + libraryName);
 
 		for (int i = 0; i < exports.num_functions; i++) {
 			long functionNid =  Integer.toUnsignedLong(funcNidTableIntBuffer.get(i));
@@ -493,7 +498,7 @@ public class VitaLoader extends GhidraScript {
 		}
 	}
 
-	private void processImports(Program program, NidDb db, Memory memory, MemoryBlock block, String moduleName, Address importsAddress,
+	private void processImports(Program program, NidDatabase db, Memory memory, MemoryBlock block, String moduleName, Address importsAddress,
 								long libraryNid, long funcNidTable, long funcEntryTable, long libraryNameLong, short numFunctions, boolean is1xFormat) throws Exception {
 		//println("Imports NID: " + String.format("0x%08X", imports.library_nid));
 		//println("Imports num funcs: " + String.format("0x%08X", imports.num_functions));
@@ -516,7 +521,7 @@ public class VitaLoader extends GhidraScript {
 		IntBuffer funcNidTableIntBuffer = ByteBuffer.wrap(funcNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 		IntBuffer funcEntryTableIntBuffer = ByteBuffer.wrap(funcEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 
-		//println("Imports library name: " + libraryName);
+		println("Imports library name: " + libraryName);
 
 		for (int i = 0; i < numFunctions; i++) {
 			long functionNid =  Integer.toUnsignedLong(funcNidTableIntBuffer.get(i));
@@ -537,7 +542,7 @@ public class VitaLoader extends GhidraScript {
 		}
 	}
 
-	private void processModuleInfo(Program program, NidDb db, Memory memory, MemoryBlock block, Address moduleInfoAddress) throws Exception {
+	private void processModuleInfo(Program program, NidDatabase db, Memory memory, MemoryBlock block, Address moduleInfoAddress) throws Exception {
 		/* Get module info bytes */
 		byte[] moduleInfoBytes = new byte[SceModuleInfo.SIZE];
 		block.getBytes(moduleInfoAddress, moduleInfoBytes, 0, moduleInfoBytes.length);
@@ -654,9 +659,9 @@ public class VitaLoader extends GhidraScript {
 
 		/* Load NID database */
 		YamlReader yamlReader = new YamlReader(new FileReader(selectedFile));
-		NidDbRaw dbRaw = yamlReader.read(NidDbRaw.class);
-		NidDb db = new NidDb();
-		populateNidDbFromRaw(db, dbRaw);
+		YamlNidDatabase dbRaw = yamlReader.read(YamlNidDatabase.class);
+		NidDatabase db = new NidDatabase();
+		populateNidDatabaseFromYaml(db, dbRaw);
 
 		/* Get module info address */
 		MemoryBlock textMemoryBlock = getExecutableMemoryBlock(memory);
