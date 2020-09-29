@@ -47,6 +47,7 @@ import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.FunctionDefinition;
 import ghidra.program.model.data.ParameterDefinition;
 import ghidra.program.model.data.Pointer32DataType;
+import ghidra.program.model.data.StringDataType;
 import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Function.FunctionUpdateType;
@@ -65,6 +66,19 @@ public class VitaLoader extends GhidraScript {
 	private final short ET_SCE_RELEXEC = (short)0xFE04;
 	private final short ET_SCE_EXEC = (short)0xFE00;
 
+	static final Map<Integer, String> noname_function_exports = Map.of(
+		0x935CD196, "module_start", 
+		0x79F8E492, "module_stop",
+		0x913482A9, "module_exit",
+		0x5C424D40, "module_bootstart"
+	);
+
+	static final Map<Integer, String> noname_variable_exports = Map.of(
+		0x936C8A78, "module_sdk_version",
+		0x70FBA1E7, "SceProcessParam",
+		0x6C2224BA, ""
+	);
+
 	public class SceModuleInfo implements StructConverter {
 		public short attributes;
 		public short version;
@@ -76,9 +90,9 @@ public class VitaLoader extends GhidraScript {
 		public long import_top;
 		public long import_end;
 		public long module_nid;
-		public int field_38;
-		public int field_3C;
-		public int field_40;
+		public long tls_start;
+		public long tls_filesz;
+		public long tls_memsz;
 		public long module_start;
 		public long module_stop;
 		public long exidx_top;
@@ -98,15 +112,52 @@ public class VitaLoader extends GhidraScript {
 			import_top = reader.readNextUnsignedInt();
 			import_end = reader.readNextUnsignedInt();
 			module_nid = reader.readNextUnsignedInt();
-			field_38 = reader.readNextInt();
-			field_3C = reader.readNextInt();
-			field_40 = reader.readNextInt();
+			tls_start = reader.readNextUnsignedInt();
+			tls_filesz = reader.readNextUnsignedInt();
+			tls_memsz = reader.readNextUnsignedInt();
 			module_start = reader.readNextUnsignedInt();
 			module_stop = reader.readNextUnsignedInt();
 			exidx_top = reader.readNextUnsignedInt();
 			exidx_end = reader.readNextUnsignedInt();
 			extab_top = reader.readNextUnsignedInt();
 			extab_end = reader.readNextUnsignedInt();
+		}
+
+		public DataType toDataType() throws DuplicateNameException, IOException {
+			return StructConverterUtil.toDataType(this);
+		}
+	}
+
+	public static class SceProcessParam implements StructConverter {
+		public long size;
+		public long magic;
+		public long version;
+		public long fw_version;
+		public long main_thread_name;
+		public long main_thread_priority;
+		public long main_thread_stacksize;
+		public long main_thread_attribute;
+		public long process_name;
+		public long process_preload_disabled;
+		public long main_thread_cpu_affinity_mask;
+		public long sce_libc_param;
+		public long unk;
+		public static final int SIZE = 0x34;
+
+		SceProcessParam(BinaryReader reader) throws IOException {
+			size = reader.readNextUnsignedInt();
+			magic = reader.readNextUnsignedInt();
+			version = reader.readNextUnsignedInt();
+			fw_version = reader.readNextUnsignedInt();
+			main_thread_name = reader.readNextUnsignedInt();
+			main_thread_priority = reader.readNextUnsignedInt();
+			main_thread_stacksize = reader.readNextUnsignedInt();
+			main_thread_attribute = reader.readNextUnsignedInt();
+			process_name = reader.readNextUnsignedInt();
+			process_preload_disabled = reader.readNextUnsignedInt();
+			main_thread_cpu_affinity_mask = reader.readNextUnsignedInt();
+			sce_libc_param = reader.readNextUnsignedInt();
+			unk = reader.readNextUnsignedInt();
 		}
 
 		public DataType toDataType() throws DuplicateNameException, IOException {
@@ -228,21 +279,35 @@ public class VitaLoader extends GhidraScript {
 	public static class NidDatabase {
 		public static class NidDatabaseLibrary {
 			public HashMap<Long, String> functions;
+			public HashMap<Long, String> variables;
 
 			public NidDatabaseLibrary() {
 				functions = new HashMap<Long, String>();
+				variables = new HashMap<Long, String>();
 			}
 
 			public boolean functionExists(long functionNid) {
 				return functions.containsKey(functionNid);
 			}
 
+			public boolean variableExists(long variableNid) {
+				return variables.containsKey(variableNid);
+			}
+
 			public void insertFunction(long functionNid, String name) {
 				functions.put(functionNid, name);
 			}
 
+			public void insertVariable(long variableNid, String name) {
+				variables.put(variableNid, name);
+			}
+
 			public String getFunctionName(long functionNid) {
 				return functions.get(functionNid);
+			}
+
+			public String getVariableName(long variableNid) {
+				return variables.get(variableNid);
 			}
 		}
 
@@ -269,6 +334,13 @@ public class VitaLoader extends GhidraScript {
 			if (library == null)
 				return null;
 			return library.getFunctionName(functionNid);
+		}
+
+		public String getVariableName(long libraryNid, long variableNid) {
+			NidDatabaseLibrary library = getLibrary(libraryNid);
+			if (library == null)
+				return null;
+			return library.getVariableName(variableNid);
 		}
 	}
 
@@ -300,6 +372,10 @@ public class VitaLoader extends GhidraScript {
 				for (Map.Entry<String, Long> functionIt: libraryRaw.functions.entrySet())
 					library.insertFunction(functionIt.getValue(), functionIt.getKey());
 
+				if (libraryRaw.variables != null)
+					for (Map.Entry<String, Long> variableIt: libraryRaw.variables.entrySet())
+						library.insertVariable(variableIt.getValue(), variableIt.getKey());
+
 				db.insertLibrary(libraryRaw.nid, library);
 			}
 		}
@@ -308,7 +384,7 @@ public class VitaLoader extends GhidraScript {
 	private ElfHeader getElfHeader(Memory memory) throws MemoryAccessException, ElfException {
 		MemoryBlock elfHeaderMemoryBlock = memory.getBlock("_elfHeader");
 
-		int elfHeaderSize = (int)elfHeaderMemoryBlock.getSize();
+		int elfHeaderSize = (int) elfHeaderMemoryBlock.getSize();
 		Address elfHeaderStart = elfHeaderMemoryBlock.getStart();
 		byte[] elfHeaderBytes = new byte[elfHeaderSize];
 
@@ -354,9 +430,9 @@ public class VitaLoader extends GhidraScript {
 		sceModuleInfoDataType.add(StructConverter.IBO32, "import_top", null);
 		sceModuleInfoDataType.add(StructConverter.IBO32, "import_end", null);
 		sceModuleInfoDataType.add(StructConverter.DWORD, "module_nid", null);
-		sceModuleInfoDataType.add(StructConverter.DWORD, "field_38", null);
-		sceModuleInfoDataType.add(StructConverter.DWORD, "field_3C", null);
-		sceModuleInfoDataType.add(StructConverter.DWORD, "field_40", null);
+		sceModuleInfoDataType.add(StructConverter.IBO32, "tls_start", null);
+		sceModuleInfoDataType.add(StructConverter.DWORD, "tls_filesz", null);
+		sceModuleInfoDataType.add(StructConverter.DWORD, "tls_memsz", null);
 		sceModuleInfoDataType.add(StructConverter.IBO32, "module_start", null);
 		sceModuleInfoDataType.add(StructConverter.IBO32, "module_stop", null);
 		sceModuleInfoDataType.add(StructConverter.IBO32, "exidx_top", null);
@@ -385,7 +461,7 @@ public class VitaLoader extends GhidraScript {
 
 		script.clearListing(moduleExportsAddress, moduleExportsAddress.add(sceModuleExportsDataType.getLength()));
 		script.createData(moduleExportsAddress, sceModuleExportsDataType);
-		script.createLabel(moduleExportsAddress, moduleName + "_exports_" + exportsName + "_" + sceModuleExportsDataType.getName(), true);
+		script.createLabel(moduleExportsAddress, moduleName + "_exports_" + exportsName + (exportsName.equals("") ? "" : "_") + sceModuleExportsDataType.getName(), true);
 	}
 
 	private static void applySceModuleImportsStruct_1x(GhidraScript script,  String moduleName, Address moduleImportsAddress, String ImportsName) throws Exception {
@@ -432,15 +508,114 @@ public class VitaLoader extends GhidraScript {
 		script.createLabel(moduleImportsAddress, moduleName + "_imports_" + ImportsName + "_" + sceModuleImportsDataType.getName(), true);
 	}
 
+	private static void applySceLibcParamStruct_1x(GhidraScript script, Address libcParamAdress, String moduleName) throws Exception, IOException, MemoryAccessException {
+		StructureDataType sceLibcParamDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceLibcParam", 0);
+		sceLibcParamDataType.add(StructConverter.DWORD, "size", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, 4, "unk_0x4", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "heap_size", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "heap_size_default", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "heap_extended_alloc", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "heap_delayed_alloc", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x18", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x1C", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "malloc_replace", null);		
+		sceLibcParamDataType.add(StructConverter.DWORD, "free_replace", null);
+
+		script.clearListing(libcParamAdress, libcParamAdress.add(sceLibcParamDataType.getLength()));
+		script.createData(libcParamAdress, sceLibcParamDataType);
+		script.createLabel(libcParamAdress, moduleName + "_" + sceLibcParamDataType.getName(), true);
+	}
+
+	private static void applySceLibcParamStruct_2x(GhidraScript script, Address libcParamAdress, String moduleName) throws Exception, IOException, MemoryAccessException {
+		StructureDataType sceLibcParamDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceLibcParam", 0);
+		sceLibcParamDataType.add(StructConverter.DWORD, "size", null);
+		sceLibcParamDataType.add(StringDataType.dataType, 4, "unk_0x4", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_size", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_size_default", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_extended_alloc", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_delayed_alloc", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "fw_version", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x1C", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x20", null);		
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x24", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x28", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x2C", null);
+		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x30", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x34", null);
+
+		script.clearListing(libcParamAdress, libcParamAdress.add(sceLibcParamDataType.getLength()));
+		script.createData(libcParamAdress, sceLibcParamDataType);
+		script.createLabel(libcParamAdress, moduleName + "_" + sceLibcParamDataType.getName(), true);
+	}
+
+	private static void applySceProcessParamStruct(GhidraScript script, Address processParamAddress, String moduleName, MemoryBlock block) throws Exception, IOException, MemoryAccessException {
+		MemoryBlock dataBlock = script.getMemoryBlock(processParamAddress);
+		
+		/* Get process param bytes */
+		byte[] processParamBytes = new byte[SceProcessParam.SIZE];
+		dataBlock.getBytes(processParamAddress, processParamBytes, 0, processParamBytes.length);
+
+		/* Read process param information */
+		ByteProvider provider = new ByteArrayProvider(processParamBytes);
+		BinaryReader reader = new BinaryReader(provider, true);
+		SceProcessParam processParam = new SceProcessParam(reader);		
+
+		StructureDataType sceProcessParamDataType = new StructureDataType(new CategoryPath("/VitaLoader"), "SceProcessParam", 0);
+		sceProcessParamDataType.add(StructConverter.DWORD, "size", null);
+		sceProcessParamDataType.add(StringDataType.dataType, 4, "magic", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "version", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "fw_version", null);
+		sceProcessParamDataType.add(Pointer32DataType.dataType, "main_thread_name", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "main_thread_priority", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "main_thread_stacksize", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "main_thread_attribute", null);
+		sceProcessParamDataType.add(Pointer32DataType.dataType, "process_name", null);		
+		sceProcessParamDataType.add(StructConverter.DWORD, "process_preload_disabled", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "main_thread_cpu_affinity_mask", null);
+		sceProcessParamDataType.add(Pointer32DataType.dataType, "sce_libc_param", null);
+		sceProcessParamDataType.add(StructConverter.DWORD, "unk", null);
+
+		if ((int) processParam.main_thread_name != 0)
+			script.createLabel(block.getStart().getNewAddress(processParam.main_thread_name), moduleName + "_main_thread_name", true);
+		if((int) processParam.process_name != 0)
+			script.createLabel(block.getStart().getNewAddress(processParam.process_name), moduleName + "_process_name", true);
+
+		script.clearListing(processParamAddress, processParamAddress.add(sceProcessParamDataType.getLength()));
+		script.createData(processParamAddress, sceProcessParamDataType);
+		script.createLabel(processParamAddress, moduleName + "_" + sceProcessParamDataType.getName(), true);
+
+		byte[] libcParamSizeBytes = new byte[4];
+		block.getBytes(block.getStart().getNewAddress(processParam.sce_libc_param), libcParamSizeBytes, 0, libcParamSizeBytes.length);
+		ByteProvider importsSizeByteProvider = new ByteArrayProvider(libcParamSizeBytes);
+		BinaryReader importsSizeBinaryReader = new BinaryReader(importsSizeByteProvider, true);
+		int libcParamSize = importsSizeBinaryReader.readNextUnsignedShort();
+
+		switch (libcParamSize) {
+			case 0x28:
+				applySceLibcParamStruct_1x(script, block.getStart().getNewAddress(processParam.sce_libc_param), moduleName);
+				break;
+			case 0x38:
+				applySceLibcParamStruct_2x(script, block.getStart().getNewAddress(processParam.sce_libc_param), moduleName);
+				break;
+			default:
+				script.println(String.format("Unknown SceLibcParam struct of size 0x%X encountered.", libcParamSize));
+				break;
+		}
+	}
+
 	private static void processFunction(GhidraScript script, Program program, NidDatabase db, String libraryName, long libraryNid, long functionNid, long functionEntry, MemoryBlock block) throws DuplicateNameException, InvalidInputException {
 		String functionName = db.getFunctionName(libraryNid, functionNid);
 		if (functionName == null)
 			functionName = libraryName + "_" + String.format("%08X", functionNid);
 
+		Address functionEntryAddress = block.getStart().getNewAddress(functionEntry);
+
+		if (libraryName.equals("") && noname_function_exports.containsKey((int) functionNid))
+			functionName = noname_function_exports.get((int) functionNid);
+			
 		//script.println("  " + String.format("0x%08X", functionNid) + ", " + functionName +
 		//		", addr: " + String.format("0x%08X", functionEntry));
 
-		Address functionEntryAddress = block.getStart().getNewAddress(functionEntry);
 		Function function = script.getFunctionAt(functionEntryAddress);
 		if (function == null)
 			function = script.createFunction(functionEntryAddress, functionName);
@@ -458,6 +633,36 @@ public class VitaLoader extends GhidraScript {
 		}
 	}
 
+	private static void processVariable(GhidraScript script, Program program, NidDatabase db, String moduleName, String libraryName, long libraryNid, long variableNid, long variableEntry, MemoryBlock block) throws Exception, DuplicateNameException, InvalidInputException {
+		String variableName = db.getVariableName(libraryNid, variableNid);
+		if (variableName == null)
+			variableName = libraryName + "_" + String.format("%08X", variableNid);
+
+		Address variableEntryAddress = block.getStart().getNewAddress(variableEntry);
+
+		if (libraryName.equals("") && noname_variable_exports.containsKey((int) variableNid)) {
+			variableName = noname_variable_exports.get((int) variableNid);
+
+			switch ((int) variableNid) {
+				case 0x70FBA1E7:
+					applySceProcessParamStruct(script, variableEntryAddress, moduleName, block);
+					variableName = String.format("%s_%s", moduleName, variableName);
+					break;
+				case 0x936C8A78:
+					script.createData(variableEntryAddress, StructConverter.DWORD);
+					variableName = String.format("%s_%s", moduleName, variableName);
+					break;
+				default:
+					return;
+			}
+		}
+
+		//script.println("  " + String.format("0x%08X", variableNid) + ", " + variableName +
+		//		", addr: " + String.format("0x%08X", variableEntry));
+		
+		script.createLabel(variableEntryAddress, variableName, false);
+	}
+
 	private void processExports(Program program, NidDatabase db, Memory memory, MemoryBlock block, String moduleName, Address exportsAddress, SceModuleExports exports) throws Exception {
 		//println("Exports NID: " + String.format("0x%08X", exports.library_nid));
 		//println("Exports num funcs: " + String.format("0x%08X", exports.num_functions));
@@ -466,6 +671,8 @@ public class VitaLoader extends GhidraScript {
 
 		Address funcNidTableAddress = block.getStart().getNewAddress(exports.nid_table);
 		Address funcEntryTableAddress = block.getStart().getNewAddress(exports.entry_table);
+		Address varNidTableAddress = block.getStart().getNewAddress(exports.nid_table + (4 * exports.num_functions));
+		Address varEntryTableAddress = block.getStart().getNewAddress(exports.entry_table + (4 * exports.num_functions));
 		Address libraryNameAddress = block.getStart().getNewAddress(exports.library_name);
 
 		ByteProvider libraryNameByteProvider = new MemoryByteProvider(memory, libraryNameAddress);
@@ -474,11 +681,23 @@ public class VitaLoader extends GhidraScript {
 
 		byte[] funcNidTableBytes = new byte[4 * exports.num_functions];
 		byte[] funcEntryTableBytes = new byte[4 * exports.num_functions];
+		byte[] varNidTableBytes = new byte[4 * exports.num_vars];
+		byte[] varEntryTableBytes = new byte[4 * exports.num_vars];
 
-		block.getBytes(funcNidTableAddress, funcNidTableBytes, 0, funcNidTableBytes.length);
-		block.getBytes(funcEntryTableAddress, funcEntryTableBytes, 0, funcEntryTableBytes.length);
+		if (exports.num_functions > 0) {
+			block.getBytes(funcNidTableAddress, funcNidTableBytes, 0, funcNidTableBytes.length);
+			block.getBytes(funcEntryTableAddress, funcEntryTableBytes, 0, funcEntryTableBytes.length);	
+		}
+
+		if (exports.num_vars > 0) {
+			block.getBytes(varNidTableAddress, varNidTableBytes, 0, varNidTableBytes.length);
+			block.getBytes(varEntryTableAddress, varEntryTableBytes, 0, varEntryTableBytes.length);
+		}
+
 		IntBuffer funcNidTableIntBuffer = ByteBuffer.wrap(funcNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 		IntBuffer funcEntryTableIntBuffer = ByteBuffer.wrap(funcEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
+		IntBuffer varNidTableIntBuffer = ByteBuffer.wrap(varNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
+		IntBuffer varEntryTableIntBuffer = ByteBuffer.wrap(varEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 
 		println("Exports library name: " + libraryName);
 
@@ -489,17 +708,30 @@ public class VitaLoader extends GhidraScript {
 			processFunction(this, program, db, libraryName, exports.library_nid, functionNid, functionEntry, block);
 		}
 
+		for (int i = 0; i < exports.num_vars; i++) {
+			long variableNid =  Integer.toUnsignedLong(varNidTableIntBuffer.get(i));
+			long variableEntry =  Integer.toUnsignedLong(varEntryTableIntBuffer.get(i)) & ~1l;
+
+			processVariable(this, program, db, moduleName, libraryName, exports.library_nid, variableNid, variableEntry, block);
+		}
+
 		applySceModuleExportsStruct(this, moduleName, exportsAddress, libraryName);
 
 		if (exports.num_functions > 0) {
 			createDwords(funcNidTableAddress, exports.num_functions);
-			createLabel(funcNidTableAddress, moduleName + "_exports_" + libraryName + "_NID_table", true);
-			createLabel(funcEntryTableAddress, moduleName + "_exports_" + libraryName + "_entry_table", true);
+			createLabel(funcNidTableAddress, moduleName + "_exports_" + libraryName + (libraryName.equals("") ? "" : "_") + "function_NID_table", true);
+			createLabel(funcEntryTableAddress, moduleName + "_exports_" + libraryName + (libraryName.equals("") ? "" : "_") + "function_entry_table", true);
+		}
+
+		if (exports.num_vars > 0) {
+			createDwords(varNidTableAddress, exports.num_vars);
+			createLabel(varNidTableAddress, moduleName + "_exports_" + libraryName + (libraryName.equals("") ? "" : "_") + "variable_NID_table", true);
+			createLabel(varEntryTableAddress, moduleName + "_exports_" + libraryName + (libraryName.equals("") ? "" : "_") + "variable_entry_table", true);
 		}
 	}
 
 	private void processImports(Program program, NidDatabase db, Memory memory, MemoryBlock block, String moduleName, Address importsAddress,
-								long libraryNid, long funcNidTable, long funcEntryTable, long libraryNameLong, short numFunctions, boolean is1xFormat) throws Exception {
+								long libraryNid, long funcNidTable, long funcEntryTable, long varNidTable, long varEntryTable, long libraryNameLong, short numFunctions, short numVars, boolean is1xFormat) throws Exception {
 		//println("Imports NID: " + String.format("0x%08X", imports.library_nid));
 		//println("Imports num funcs: " + String.format("0x%08X", imports.num_functions));
 		//println("Imports nid table: " + String.format("0x%08X", imports.func_nid_table));
@@ -507,6 +739,8 @@ public class VitaLoader extends GhidraScript {
 
 		Address funcNidTableAddress = block.getStart().getNewAddress(funcNidTable);
 		Address funcEntryTableAddress = block.getStart().getNewAddress(funcEntryTable);
+		Address varNidTableAddress = block.getStart().getNewAddress(varNidTable);
+		Address varEntryTableAddress = block.getStart().getNewAddress(varEntryTable);
 		Address libraryNameAddress = block.getStart().getNewAddress(libraryNameLong);
 
 		ByteProvider libraryNameByteProvider = new MemoryByteProvider(memory, libraryNameAddress);
@@ -515,11 +749,22 @@ public class VitaLoader extends GhidraScript {
 
 		byte[] funcNidTableBytes = new byte[4 * numFunctions];
 		byte[] funcEntryTableBytes = new byte[4 * numFunctions];
+		byte[] varNidTableBytes = new byte[4 * numVars];
+		byte[] varEntryTableBytes = new byte[4 * numVars];
 
-		block.getBytes(funcNidTableAddress, funcNidTableBytes, 0, funcNidTableBytes.length);
-		block.getBytes(funcEntryTableAddress, funcEntryTableBytes, 0, funcEntryTableBytes.length);
+		if (numFunctions > 0) {
+			block.getBytes(funcNidTableAddress, funcNidTableBytes, 0, funcNidTableBytes.length);
+			block.getBytes(funcEntryTableAddress, funcEntryTableBytes, 0, funcEntryTableBytes.length);
+		}
+		if (numVars > 0) {
+			block.getBytes(varNidTableAddress, varNidTableBytes, 0, varNidTableBytes.length);
+			block.getBytes(varEntryTableAddress, varEntryTableBytes, 0, varEntryTableBytes.length);
+		}			
+
 		IntBuffer funcNidTableIntBuffer = ByteBuffer.wrap(funcNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 		IntBuffer funcEntryTableIntBuffer = ByteBuffer.wrap(funcEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
+		IntBuffer varNidTableIntBuffer = ByteBuffer.wrap(varNidTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
+		IntBuffer varEntryTableIntBuffer = ByteBuffer.wrap(varEntryTableBytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
 
 		println("Imports library name: " + libraryName);
 
@@ -529,16 +774,28 @@ public class VitaLoader extends GhidraScript {
 
 			processFunction(this, program, db, libraryName, libraryNid, functionNid, functionEntry, block);
 		}
+		for (int i = 0; i < numVars; i++) {
+			long variableNid =  Integer.toUnsignedLong(varNidTableIntBuffer.get(i));
+			long variableEntry =  Integer.toUnsignedLong(varEntryTableIntBuffer.get(i)) & ~1l;
+
+			processVariable(this, program, db, moduleName, libraryName, libraryNid, variableNid, variableEntry, block);
+		}
 
 		if (is1xFormat)
 			applySceModuleImportsStruct_1x(this, moduleName, importsAddress, libraryName);
 		else
 			applySceModuleImportsStruct_3x(this, moduleName, importsAddress, libraryName);
 
-		if (numFunctions > 0) {
+		if (numFunctions > 0 && numVars > 0) {
 			createDwords(funcNidTableAddress, numFunctions);
-			createLabel(funcNidTableAddress, moduleName + "_imports_" + libraryName + "_NID_table", true);
-			createLabel(funcEntryTableAddress, moduleName + "_imports_" + libraryName + "_entry_table", true);
+			createLabel(funcNidTableAddress, moduleName + "_imports_" + libraryName + "_function_NID_table", true);
+			createLabel(funcEntryTableAddress, moduleName + "_imports_" + libraryName + "_function_entry_table", true);
+		}
+
+		if (numVars > 0) {
+			createDwords(varNidTableAddress, numVars);
+			createLabel(varNidTableAddress, moduleName + "_imports_" + libraryName + "_variable_NID_table", true);
+			createLabel(varEntryTableAddress, moduleName + "_imports_" + libraryName + "_variable_entry_table", true);
 		}
 	}
 
@@ -598,27 +855,33 @@ public class VitaLoader extends GhidraScript {
 			ByteProvider importsByteProvider = new ByteArrayProvider(importsBytes);
 			BinaryReader importsBinaryReader = new BinaryReader(importsByteProvider, true);
 
-			long libraryNid, funcNidTable, funcEntryTable, libraryNameLong;
-			short numFunctions;
+			long libraryNid, funcNidTable, funcEntryTable, varNidTable, varEntryTable, libraryNameLong;
+			short numFunctions, numVars;
 
 			if (importsSize == SceModuleImports_1x.SIZE) {
 				SceModuleImports_1x moduleImports = new SceModuleImports_1x(importsBinaryReader);
 				libraryNid = moduleImports.library_nid;
 				funcNidTable = moduleImports.func_nid_table;
 				funcEntryTable = moduleImports.func_entry_table;
+				varNidTable = moduleImports.var_nid_table;
+				varEntryTable = moduleImports.var_entry_table;
 				libraryNameLong = moduleImports.library_name;
 				numFunctions = moduleImports.num_functions;
+				numVars = moduleImports.num_vars;
 			} else { /* Can only be 3.x format */
 				SceModuleImports_3x moduleImports = new SceModuleImports_3x(importsBinaryReader);
 				libraryNid = moduleImports.library_nid;
 				funcNidTable = moduleImports.func_nid_table;
 				funcEntryTable = moduleImports.func_entry_table;
+				varNidTable = moduleImports.var_nid_table;
+				varEntryTable = moduleImports.var_entry_table;
 				libraryNameLong = moduleImports.library_name;
 				numFunctions = moduleImports.num_functions;
+				numVars = moduleImports.num_vars;
 			}
 
 			processImports(program, db, memory, block, moduleInfo.name, importsTop, libraryNid, funcNidTable,
-					funcEntryTable, libraryNameLong, numFunctions, (importsSize == SceModuleImports_1x.SIZE));
+					funcEntryTable, varNidTable, varEntryTable, libraryNameLong, numFunctions, numVars, (importsSize == SceModuleImports_1x.SIZE));
 
 			importsTop = importsTop.add(importsSize);
 		}
