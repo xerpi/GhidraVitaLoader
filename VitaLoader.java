@@ -660,7 +660,7 @@ public class VitaLoader extends GhidraScript {
 		//script.println("  " + String.format("0x%08X", variableNid) + ", " + variableName +
 		//		", addr: " + String.format("0x%08X", variableEntry));
 		
-		script.createLabel(variableEntryAddress, variableName, false);
+		script.createLabel(variableEntryAddress, variableName, true);
 	}
 
 	private void processExports(Program program, NidDatabase db, Memory memory, MemoryBlock block, String moduleName, Address exportsAddress, SceModuleExports exports) throws Exception {
@@ -786,7 +786,7 @@ public class VitaLoader extends GhidraScript {
 		else
 			applySceModuleImportsStruct_3x(this, moduleName, importsAddress, libraryName);
 
-		if (numFunctions > 0 && numVars > 0) {
+		if (numFunctions > 0) {
 			createDwords(funcNidTableAddress, numFunctions);
 			createLabel(funcNidTableAddress, moduleName + "_imports_" + libraryName + "_function_NID_table", true);
 			createLabel(funcEntryTableAddress, moduleName + "_imports_" + libraryName + "_function_entry_table", true);
