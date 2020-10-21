@@ -532,16 +532,16 @@ public class VitaLoader extends GhidraScript {
 		sceLibcParamDataType.add(StringDataType.dataType, 4, "unk_0x4", null);
 		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_size", null);
 		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_size_default", null);
-		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_extended_alloc", null);
-		sceLibcParamDataType.add(Pointer32DataType.dataType, "heap_delayed_alloc", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x10", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x14", null);
 		sceLibcParamDataType.add(StructConverter.DWORD, "fw_version", null);
 		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x1C", null);
-		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x20", null);		
-		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x24", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "malloc_replace", null);		
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "new_replace", null);
 		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x28", null);
 		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x2C", null);
 		sceLibcParamDataType.add(StructConverter.DWORD, "unk_0x30", null);
-		sceLibcParamDataType.add(Pointer32DataType.dataType, "unk_0x34", null);
+		sceLibcParamDataType.add(Pointer32DataType.dataType, "malloc_for_tls_replace", null);
 
 		script.clearListing(libcParamAdress, libcParamAdress.add(sceLibcParamDataType.getLength()));
 		script.createData(libcParamAdress, sceLibcParamDataType);
@@ -577,7 +577,7 @@ public class VitaLoader extends GhidraScript {
 
 		if ((int) processParam.main_thread_name != 0)
 			script.createLabel(block.getStart().getNewAddress(processParam.main_thread_name), moduleName + "_main_thread_name", true);
-		if((int) processParam.process_name != 0)
+		if ((int) processParam.process_name != 0)
 			script.createLabel(block.getStart().getNewAddress(processParam.process_name), moduleName + "_process_name", true);
 
 		script.clearListing(processParamAddress, processParamAddress.add(sceProcessParamDataType.getLength()));
